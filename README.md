@@ -11,7 +11,7 @@ You might find it useful for other scenarios, if you need the following traits:
 
 1. Hardware tip:   
    For a laptop secure storage, I like the 1T SSD 970pro, made by a well known Korean company.  
-   This drive, supports the OPAL2 encryption standard. Just make sure you actually turn the FDE (Full Disk Encryption) On.
+   This drive supports the OPAL2 encryption standard. Just make sure you actually turn the FDE (Full Disk Encryption) On.
 
 2. Install Ubuntu 20.04 server  
    I like to configure my own partitions, but this is just me.
