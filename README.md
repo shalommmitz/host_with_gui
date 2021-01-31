@@ -13,13 +13,20 @@ You might find it useful for other scenarios, if you need the following traits:
    For a laptop secure storage, I like the 1T SSD 970pro, made by a well known Korean company.  
    This drive supports the OPAL2 encryption standard. Just make sure you actually turn the FDE (Full Disk Encryption) On.
 
-2. Install Ubuntu 20.04 server  
+2. Install Ubuntu 20.04 server:  
    I like to configure my own partitions, but this is just me.
    Also, I like the main partition (/home) to be xfs. YMMV.
 
-3. Install Xubuntu core  
-   After the server is up: `apt install xubuntu-core^`
-   I do all my stuff on virtual machines. So, Xubuntu core helps me NOT to do things on the host (which protects the host). Twisted ? Yes. Defiantly.
+3. Install Xubuntu core:  
+   This will add Graphical desktop and related utilities, W/O any applications.  
+   After the server is up, run:
+   ```
+   sudo apt update
+   sudo apt install xubuntu-core^          # Notice the ^ at the end of the line  
+   ```
+   I do all my stuff on virtual machines.  
+   So, Xubuntu core helps me NOT to do things on the host (which protects the host).  
+   Twisted ? Yes. Defiantly.
    Most important: no browser :-)
 
 4. Disable IPv6  
@@ -52,7 +59,7 @@ You might find it useful for other scenarios, if you need the following traits:
          cd /usr/lib/NetworkManager/conf.d/
          mv 10-globally-managed-devices.conf orig_10-globally-managed-devices.conf
          touch /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
-        ```
+         ```
      4. Restart Network Manager:   
         `sudo service network-manager restart`
 
@@ -86,7 +93,7 @@ I did not add references, but almost all the commands below have been googled - 
 COMMIT
 ```
 
-### rules.ip6: Block everything
+### The contents of /etc/iptables/rules.ip6: Block everything
 ```
 *filter
 :INPUT ACCEPT [0:0]
