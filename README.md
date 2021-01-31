@@ -23,13 +23,15 @@ You might find it useful for other scenarios, if you need the following traits:
    Most important: no browser :-)
 
 4. Disable IPv6  
-   At /etc/default/grub, replace existing line w/:
-       `GRUB_CMDLINE_LINUX_DEFAULT="ipv6.disable=1"`
+   At /etc/default/grub, replace the line:  
+       `GRUB_CMDLINE_LINUX_DEFAULT=""`  
+   with:  
+       `GRUB_CMDLINE_LINUX_DEFAULT="ipv6.disable=1"`  
    and then run `update-grub`
 
 5. Install Iptables  
-   `sudo apt remove --purge ufw`
-   `sudo apt install iptables-persistent`
+   `sudo apt remove --purge ufw`  
+   `sudo apt install iptables-persistent`  
    See appendix A for the rules file
 
 6. Enable network manager (NM is not active by default on a server, which is the base we use)  
@@ -41,9 +43,18 @@ You might find it useful for other scenarios, if you need the following traits:
      2. Backup and then edit `/etc/network/interfaces` to contain EXACTLY:  
        `auto lo`  
        `iface lo inet loopback`  
-     3.  Surprisingly, Network Manager wont actually control wired connections w/the below step:  
-        `sudo touch /etc/NetworkManager/conf.d/10-globally-managed-devices.conf`
-     4. `sudo service network-manager restart`
+     3.  Surprisingly, Network Manager wont actually control wired connections w/o the below steps:  
+         ```
+         su
+         cd /etc/NetworkManager/conf.d/
+         mv 10-globally-managed-devices.conf orig_10-globally-managed-devices.conf
+         touch /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
+         cd /usr/lib/NetworkManager/conf.d/
+         mv 10-globally-managed-devices.conf orig_10-globally-managed-devices.conf
+         touch /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
+        ```
+     4. Restart Network Manager:   
+        `sudo service network-manager restart`
 
 ## Author
 
