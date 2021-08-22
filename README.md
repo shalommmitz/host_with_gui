@@ -53,7 +53,7 @@ You might find it useful for other scenarios, if you need the following traits:
       # Let NetworkManager manage all devices on this system
       network:
       version: 2
-      renderer: NetworkManager`
+      renderer: NetworkManager
       ```
    
    If the above did not work, try this:
