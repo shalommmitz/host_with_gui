@@ -42,6 +42,21 @@ You might find it useful for other scenarios, if you need the following traits:
    See appendix A for the rules file
 
 6. Enable network manager (NM is not active by default on a server, which is the base we use)  
+
+   First try the following:
+   
+      1. As root, cd to /etc/netplan
+      2. Backup and remove all existing files in this folder
+      3. Create the file `01-network-manager-all.yaml`, with the contents:
+      
+      `# Let NetworkManager manage all devices on this system
+       network:
+       version: 2
+       renderer: NetworkManager`
+
+   
+   If the above did not work, try this:
+
    Source:
    []https://askubuntu.com/questions/71159/network-manager-says-device-not-managed
 
@@ -54,9 +69,6 @@ You might find it useful for other scenarios, if you need the following traits:
          ```
          su
          cd /etc/NetworkManager/conf.d/
-         mv 10-globally-managed-devices.conf orig_10-globally-managed-devices.conf
-         touch /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
-         cd /usr/lib/NetworkManager/conf.d/
          mv 10-globally-managed-devices.conf orig_10-globally-managed-devices.conf
          touch /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
          ```
