@@ -49,11 +49,12 @@ You might find it useful for other scenarios, if you need the following traits:
       2. Backup and remove all existing files in this folder
       3. Create the file `01-network-manager-all.yaml`, with the contents:
       
-      `# Let NetworkManager manage all devices on this system
-       network:
-       version: 2
-       renderer: NetworkManager`
-
+      ```
+      # Let NetworkManager manage all devices on this system
+      network:
+      version: 2
+      renderer: NetworkManager`
+      ```
    
    If the above did not work, try this:
 
