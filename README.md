@@ -41,7 +41,19 @@ You might find it useful for other scenarios, if you need the following traits:
    `sudo apt install iptables-persistent`  
    See appendix A for the rules file
 
-6. Enable network manager (NM is not active by default on a server, which is the base we use)  
+6. Optional: disable CUPS 
+   `systemctl disable cups.service`
+
+7. Optional: autologin
+   As root, create the file /etc/lightdm/lightdm.conf/70-autologin.conf
+   with the contents:
+
+   ```
+   [SeatDefaults]
+   autologin-user=YOUR-USER-NAME
+   ```
+
+8. Enable network manager (NM is not active by default on a server, which is the base we use)  
 
    First try the following:
    
@@ -55,6 +67,10 @@ You might find it useful for other scenarios, if you need the following traits:
           version: 2
           renderer: NetworkManager
       ```
+      4. As root, run: `netplan generate` and `netplan apply`
+        
+         Note: This will eliminate any predefined network connections
+         Note: Make sure you perform this step AFTER installing the Xubuntu-core sw (as this installs network-manager)`
    
    If the above did not work, try this:
 
