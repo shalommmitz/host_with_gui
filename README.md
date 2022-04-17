@@ -2,8 +2,8 @@ A procedure to create a reasonably safe server host with GUI (Xubunutu).
 
 You might find it useful, if you need:
   
-   - A bare-bone installation (E.g., not open-office, no browser)
-   - but with all the creature-comfort of a graphical desktop, sound, graphical network connection management, etc (not lots of etc)
+   - A bare-bone installation (E.g., without open-office or a browser)
+     but with all the creature-comfort of a graphical desktop, sound, GUI network setup, etc (not lots of etc)
    - Smaller attack surface
 
 ## Hardware tip:   
