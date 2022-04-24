@@ -20,11 +20,12 @@ You might find it useful, if you need:
 2. You may perform the rest of the steps below automatically using Ansible.
    Copy the repository to the remote machine and execute `cd ansible; ./INSTALL`
 
-3. Install Xubuntu core:  
+3. Install Xubuntu core and misc packages:  
    This will add Graphical desktop and related utilities, W/O any applications.  
    After the server is up, run:
    ```
    sudo apt update
+   sudo apt install net-tools build-essential
    sudo apt install xubuntu-core^          # Notice the ^ at the end of the line  
    ```
    Note: we are using 'xubuntu-core' and not 'xubuntu-desktop' to discourage use of the host for 'personal productivity' tasks, such as browsing the Internet or using Office.

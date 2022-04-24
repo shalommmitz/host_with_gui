@@ -8,6 +8,10 @@
         name: net-tools
         state: latest
         update_cache: yes
+    - name: Install build-essential
+      apt:
+        name: build-essential
+        state: latest
     - name: "Install Xubuntu Core (workaround: apt module does not support ^)"
       shell:
         "apt install xubuntu-core^"
