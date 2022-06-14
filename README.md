@@ -46,6 +46,7 @@ You might find it useful, if you need:
    `systemctl disable cups.service`
 
 7. Optional: autologin
+
    As root, create the file /etc/lightdm/lightdm.conf.d/70-autologin.conf
    with the contents:
 
