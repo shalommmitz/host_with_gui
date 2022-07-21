@@ -16,6 +16,9 @@ You might find it useful, if you need:
 1. Install Ubuntu 22.04 server:  
    I like to configure my own partitions, but this is just me.
    Also, I like the main partition (/home) to be xfs. YMMV.
+   [Details instructions](https://ubuntu.com/tutorials/install-ubuntu-server)
+
+   Before you continue, make sure networking is working
    
 2. You may perform the rest of the steps below automatically using Ansible.
    Copy the repository to the remote machine and execute `cd ansible; ./INSTALL`
