@@ -72,23 +72,23 @@
           autologin-user={{nonRootUser}}
     - name: "Remove un-needed folder ~/Public"
       file:
-        path: /home/{{nonRootUser}}/Public
+        path: "/home/{{nonRootUser}}/Public/"
         state: absent
     - name: "Remove un-needed folder ~/Music"
       file:
-        path: /home/{{nonRootUser}}/Music
+        path: "/home/{{nonRootUser}}/Music/"
         state: absent
     - name: "Remove un-needed folder ~/Documents"
       file:
-        path: /home/{{nonRootUser}}/Documents
+        path: "/home/{{nonRootUser}}/Documents/"
         state: absent
     - name: "Remove un-needed folder ~/Videos"
       file:
-        path: /home/{{nonRootUser}}/Videos
+        path: "/home/{{nonRootUser}}/Videos/"
         state: absent
     - name: "Remove un-needed folder ~/Templates"
       file:
-        path: /home/{{nonRootUser}}/Templates
+        path: "/home/{{nonRootUser}}/Templates/"
         state: absent
     - name: "Enable Network Manager: set NM as renderer"
       lineinfile:
@@ -107,6 +107,20 @@
       become: false
       xfconf:
         channel: "xfce4-screensaver"
-        property: "/lock/saver-activation/enabled"
+        property: "/saver/enabled"
+        value_type: "bool"
+        value: false
+    - name: "Disable lockscreen by the power manager"
+      become: false
+      xfconf:
+        channel: 'xfce4-power-manager'
+        property: '/xfce4-power-manager/lock-screen-suspend-hibernate'
+        value_type: "bool"
+        value: false
+    - name: "Disable controlling of the display by the power manager"
+      become: false
+      xfconf:
+        channel: 'xfce4-power-manager'
+        property: '/xfce4-power-manager/dpms-enabled'
         value_type: "bool"
         value: false
