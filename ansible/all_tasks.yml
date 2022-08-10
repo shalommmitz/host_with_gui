@@ -12,12 +12,11 @@
       apt:
         name: build-essential
         state: latest
-    - name: "Install Xubuntu Core (workaround: apt module does not support ^)"
-      shell:
-        "apt install xubuntu-core^"
-    - name: "Install Xubuntu Core: verify"
+    - name: "Install Xubuntu Core. (workaround: Ansible's apt module does not support ^)"
+      shell: "apt -qq -y install xubuntu-core^"
+    - name: "Verify Xubuntu Core is correctly installed"
       apt:
-        pkg: "xubuntu-core"
+        pkg: "xubuntu-core*"
         state: latest
     - name: "Disable IPv6: modify conf file"
       lineinfile:
@@ -104,3 +103,10 @@
     - name: "Enable Network Manager: re-configure netplan 2"
       shell:
         "netplan apply"
+    - name: "Disable screen saver"
+      become: false
+      xfconf:
+        channel: "xfce4-screensaver"
+        property: "/lock/saver-activation/enabled"
+        value_type: "bool"
+        value: false
