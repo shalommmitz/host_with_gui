@@ -60,7 +60,7 @@ You might find it useful, if you need:
 
 8. Minor: Remove un-needed folders
    `rmdir Public Templates Videos Music Documents`
-8. Enable network manager (NM is not active by default on a server, which is the base we use)  
+9. Enable network manager (NM is not active by default on a server, which is the base we use)  
 
    First try the following:
    
@@ -96,6 +96,14 @@ You might find it useful, if you need:
          ```
      4. Restart Network Manager:   
         `sudo service network-manager restart`
+
+10. Adjust the destop:
+
+    - Turn off the screensaver 
+    - Turn off the power-manager control of the display
+    - Turn off the blank-display on no-activity
+  
+    Tip: get the values to change by using watch-xfce-xfconf
 
 ## Author
 

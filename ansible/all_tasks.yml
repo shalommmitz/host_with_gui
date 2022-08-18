@@ -124,3 +124,10 @@
         property: '/xfce4-power-manager/dpms-enabled'
         value_type: "bool"
         value: false
+    - name: "Disable banking the display after no activity"
+      become: false
+      xfconf:
+        channel: 'xfce4-power-manager'
+        property: '/xfce4-power-manager/blank-on-ac'
+        value_type: "int"
+        value: 0
