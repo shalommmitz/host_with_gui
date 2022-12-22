@@ -18,11 +18,11 @@
       apt:
         pkg: "xubuntu-core*"
         state: latest
-    - name: "Disable IPv6: modify conf file"
+    - name: "Disable IPv6: modify conf file & disable blanking screen on incactivy"
       lineinfile:
         dest=/etc/default/grub
         regex="GRUB_CMDLINE_LINUX_DEFAULT=\"\""
-        line="GRUB_CMDLINE_LINUX_DEFAULT=\"ipv6.disable=1\""
+        line="GRUB_CMDLINE_LINUX_DEFAULT=\"ipv6.disable=1 consoleblank=0\""
         backup=yes
     - name: "Disable IPv6: enact change"
       shell:
