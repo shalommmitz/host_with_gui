@@ -3,5 +3,5 @@ sudo bash -c "echo options nouveau modeset=0 >> /etc/modprobe.d/blacklist-nvidia
 sudo update-initramfs -u
 echo
 echo Need to reboot
-ehco
+echo
 echo After reboot, run 'lsmod | grep nouveau' to confirm success
