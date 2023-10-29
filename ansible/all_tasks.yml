@@ -103,6 +103,11 @@
     - name: "Enable Network Manager: re-configure netplan 2"
       shell:
         "netplan apply"
+    - name: "Disable the networkd-wait-online service"
+      service:
+        name:    systemd-networkd-wait-online
+        enabled: no
+        state:   stopped
     - name: "Disable screen saver"
       become: false
       xfconf:

@@ -97,13 +97,19 @@ You might find it useful, if you need:
      4. Restart Network Manager:   
         `sudo service network-manager restart`
 
-10. Adjust the destop:
+10. Adjust the desktop:
 
-    - Turn off the screensaver 
+    - Turn off the screen-saver 
     - Turn off the power-manager control of the display
     - Turn off the blank-display on no-activity
   
     Tip: get the values to change by using watch-xfce-xfconf
+
+11. Turn off the systemd networkd-wait-online service
+
+    This service will cause the PC to wait ~2 minutes at boot time, if not all networks are connected
+
+    `systemctl disable systemd-networkd-wait-online.service`
 
 ## Author
 
