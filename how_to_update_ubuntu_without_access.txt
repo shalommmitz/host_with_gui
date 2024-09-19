@@ -1,0 +1,27 @@
+Source: h__ps://stackoverflow.com/questions/36353955/apt-get-install-via-tunnel-proxy-but-ssh-only-from-client-side
+
+Setup:
+
+Computer A
+
+    Has access to Internet
+    Has access to Computer B
+    SSH is installed
+
+Computer B
+
+    Doesn't have access to Internet
+    OpenSSH Server is installed
+
+Steps:
+
+    ssh into Computer B from Computer A
+
+    sudo ssh -R <selected port>:us.archive.ubuntu.com:80 user@computerb.host
+
+    Edit Computer B's /etc/apt/apt.conf to include the following lines:
+
+    Acquire::http::Proxy "http://localhost:<selected port>";
+    Acquire::https::Proxy "https://localhost:<selected port>";
+
+    Run your apt-get update or install or upgrade on Computer B and it should work
