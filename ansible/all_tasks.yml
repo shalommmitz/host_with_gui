@@ -13,7 +13,7 @@
         name: build-essential
         state: latest
     - name: "Install Xubuntu Core. (workaround: Ansible's apt module does not support ^)"
-      shell: "apt -qq -y install xubuntu-core^"
+      shell: "apt -qq -y install xubuntu-core"
     - name: "Verify Xubuntu Core is correctly installed"
       apt:
         pkg: "xubuntu-core*"
