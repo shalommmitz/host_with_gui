@@ -153,8 +153,8 @@
         property: '/xfce4-power-manager/blank-on-ac'
         value_type: "int"
         value: 0
-- name: disable systemd-networkd-wait-online
-  systemd:
-    name: systemd-networkd-wait-online
-    state: stopped
-    enabled: no
+    - name: "Disable systemd-networkd-wait-online"
+      systemd:
+        name: systemd-networkd-wait-online
+        state: stopped
+        enabled: no
