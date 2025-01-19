@@ -1,0 +1,13 @@
+echo -n "NetworkManager-wait-online.service: "
+systemctl is-enabled NetworkManager-wait-online.service
+echo -n "systemd-networkd-wait-online.service: "
+systemctl is-enabled systemd-networkd-wait-online.service
+echo -n "NetworkManager.service: "
+systemctl is-enabled NetworkManager.service
+echo -n "systemd-networkd.service: "
+systemctl is-enabled systemd-networkd.service
+echo
+echo "grep netplan files to find the actually used service:"
+grep renderer /etc/netplan/*
+echo
+echo "To disable networkd: sudo systemctl disable systemd-networkd.service"

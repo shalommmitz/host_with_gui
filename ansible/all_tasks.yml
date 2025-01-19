@@ -125,6 +125,10 @@
         name:    systemd-networkd-wait-online
         enabled: no
         state:   stopped
+    - name: "Disable networkd"
+      ansible.builtin.systemd:
+        name: systemd-networkd
+        enabled: no
     - name: "Disable screen saver"
       become: false
       xfconf:
