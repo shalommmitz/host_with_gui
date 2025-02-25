@@ -1,0 +1,1 @@
+dig +https @1.1.1.1 $1 | grep -A 1 "ANSWER SEC" | tail -1 | awk '{print $NF" "$1}'| rev | cut -c 2- | rev
