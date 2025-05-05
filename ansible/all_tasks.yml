@@ -162,3 +162,26 @@
         name: systemd-networkd-wait-online
         state: stopped
         enabled: no
+    - name: Disable and mask apport.service
+      systemd:
+        name: apport.service
+        enabled: false
+        state: stopped
+        masked: true
+
+    - name: Remove ubuntu-report and popularity-contest packages
+      apt:
+        name:
+          - ubuntu-report
+          - popularity-contest
+        state: absent
+        purge: true
+        autoremove: yes
+        update_cache: yes
+
+    - name: Ensure apport is not configured to start
+      lineinfile:
+        path: /etc/default/apport
+        regexp: '^enabled='
+        line: 'enabled=0'
+        create: yes
