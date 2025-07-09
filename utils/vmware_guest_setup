@@ -1,0 +1,4 @@
+sudo apt install open-vm-tools open-vm-tools-desktop xserver-xorg-video-vmware
+If the shared folder with host do not survive reboot, add the following
+line to /etc/fstab:
+.host:/ /mnt/hgfs fuse.vmhgfs-fuse defaults,allow_other,_netdev 0 0
