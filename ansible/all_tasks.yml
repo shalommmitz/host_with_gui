@@ -113,7 +113,7 @@
         line: "  renderer: NetworkManager"
         firstmatch: yes
         state: present  
-        when: netplan_config_2004.stat.exists
+      when: netplan_config_2004.stat.exists
     - name: "Enable Network Manager: re-configure netplan 1"
       shell:
         "netplan generate"    
