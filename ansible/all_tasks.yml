@@ -129,6 +129,29 @@
       ansible.builtin.systemd:
         name: systemd-networkd
         enabled: no
+
+    - name: Disable automatic screensaver start
+      community.general.xfconf:
+        channel: xfce4-screensaver
+        property: /idle-activation-enabled
+        value: false
+        type: bool
+        # user: "{{ xfce_user | default(omit) }}"   # uncomment ONLY if using vars above
+    - name: Disable “lock screen after” (set to Never)
+      community.general.xfconf:
+        channel: xfce4-screensaver
+        property: /lock-enabled
+        value: false
+        type: bool
+        # user: "{{ xfce_user | default(omit) }}"
+    - name: Ensure lock delay is zero seconds
+      community.general.xfconf:
+        channel: xfce4-screensaver
+        property: /lock-delay
+        value: 0
+        type: int
+        # user: "{{ xfce_user | default(omit) }}"
+
     - name: "Disable screen saver"
       become: false
       xfconf:
@@ -150,7 +173,7 @@
         property: '/xfce4-power-manager/dpms-enabled'
         value_type: "bool"
         value: false
-    - name: "Disable banking the display after no activity"
+    - name: "Disable blanking the display after no activity"
       become: false
       xfconf:
         channel: 'xfce4-power-manager'
