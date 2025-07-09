@@ -97,8 +97,8 @@
     - name: "Enable Network Manager 20.04: set NM as renderer"
       lineinfile:
         path: /etc/netplan/00-installer-config.yaml
-        insertafter: "network:" 
-        line: "  renderer: NetworkManager"
+        insertafter: "^network:" 
+        line: "    renderer: NetworkManager"
         firstmatch: yes
         state: present  
       when: netplan_config_2004.stat.exists
