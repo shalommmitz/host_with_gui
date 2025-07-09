@@ -109,7 +109,7 @@
     - name: "Enable Network Manager 24.04: set NM as renderer"
       lineinfile:
         path: /etc/netplan/50-cloud-init.yaml
-        insertafter: "network:" 
+        insertafter: "^network:$" 
         line: "  renderer: NetworkManager"
         firstmatch: yes
         state: present  
