@@ -135,22 +135,22 @@
         channel: xfce4-screensaver
         property: /idle-activation-enabled
         value: false
-        type: bool
-        # user: "{{ xfce_user | default(omit) }}"   # uncomment ONLY if using vars above
+        value_type: "bool"
+        user: "{{ nonRootUser }}"   # uncomment ONLY if using vars above
     - name: Disable “lock screen after” (set to Never)
       community.general.xfconf:
         channel: xfce4-screensaver
         property: /lock-enabled
-        value: false
-        type: bool
-        # user: "{{ xfce_user | default(omit) }}"
+        value: "false"
+        value_type: bool
+        user: "{{ nonRootUser }}"
     - name: Ensure lock delay is zero seconds
       community.general.xfconf:
         channel: xfce4-screensaver
         property: /lock-delay
         value: 0
-        type: int
-        # user: "{{ xfce_user | default(omit) }}"
+        value_type: "int"
+        user: "{{ nonRootUser }}"
 
     - name: "Disable screen saver"
       become: false
