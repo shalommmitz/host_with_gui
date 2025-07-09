@@ -98,7 +98,7 @@
       lineinfile:
         path: /etc/netplan/00-installer-config.yaml
         insertafter: "^network:$" 
-        line: "    renderer: NetworkManager"
+        line: "  renderer: NetworkManager"
         firstmatch: yes
         state: present  
       when: netplan_config_2004.stat.exists
@@ -110,7 +110,7 @@
       lineinfile:
         path: /etc/netplan/50-cloud-init.yaml
         insertafter: "^network:$" 
-        line: "  renderer: NetworkManager"
+        line: "    renderer: NetworkManager"
         firstmatch: yes
         state: present  
       when: netplan_config_2004.stat.exists
