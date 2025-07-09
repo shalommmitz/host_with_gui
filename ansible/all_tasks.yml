@@ -101,7 +101,7 @@
         line: "  renderer: NetworkManager"
         firstmatch: yes
         state: present  
-        when: netplan_config_2004.stat.exists
+      when: netplan_config_2004.stat.exists
     - name: "Enable Network Manager: check if 24.04 file exists"
       stat:
         path: /etc/netplan/50-cloud-init.yaml
