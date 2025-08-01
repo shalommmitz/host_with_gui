@@ -3,6 +3,112 @@
   connection: local
   become: true
   tasks:
+
+    # Enhance history for current user
+    - name: Set HISTTIMEFORMAT for current user
+      lineinfile:
+        path: "/home/{{nonRootUser}}/.bashrc"
+        regexp: '^export HISTTIMEFORMAT='
+        line: 'export HISTTIMEFORMAT="%d%b%Y-%H%M.%S "'
+        create: yes
+        state: present
+    
+    - name: Set HISTSIZE for current user
+      lineinfile:
+        path: "/home/{{nonRootUser}}/.bashrc"
+        regexp: '^export HISTSIZE='
+        line: 'export HISTSIZE=10000'
+        create: yes
+        state: present
+    
+    - name: Set HISTFILESIZE for current user
+      lineinfile:
+        path: "/home/{{nonRootUser}}/.bashrc"
+        regexp: '^export HISTFILESIZE='
+        line: 'export HISTFILESIZE=20000'
+        create: yes
+        state: present
+    
+    - name: Set HISTCONTROL for current user
+      lineinfile:
+        path: "/home/{{nonRootUser}}/.bashrc"
+        regexp: '^export HISTCONTROL='
+        line: 'export HISTCONTROL=ignoredups:erasedups'
+        create: yes
+        state: present
+    
+    - name: Enable histappend for current user
+      lineinfile:
+        path: "/home/{{nonRootUser}}/.bashrc"
+        regexp: '^shopt -s histappend'
+        line: 'shopt -s histappend'
+        create: yes
+        state: present
+    
+    - name: Add history -a to PROMPT_COMMAND for current user
+      lineinfile:
+        path: "/home/{{nonRootUser}}/.bashrc"
+        regexp: '^PROMPT_COMMAND=.*history -a.*'
+        line: 'PROMPT_COMMAND="history -a; $PROMPT_COMMAND"'
+        create: yes
+        state: present
+    
+    # Enhance history for root user
+    - name: Set HISTTIMEFORMAT for root user
+      become: true
+      lineinfile:
+        path: /root/.bashrc
+        regexp: '^export HISTTIMEFORMAT='
+        line: 'export HISTTIMEFORMAT="%d%b%Y-%H%M.%S "'
+        create: yes
+        state: present
+    
+    - name: Set HISTSIZE for root user
+      become: true
+      lineinfile:
+        path: /root/.bashrc
+        regexp: '^export HISTSIZE='
+        line: 'export HISTSIZE=10000'
+        create: yes
+        state: present
+    
+    - name: Set HISTFILESIZE for root user
+      become: true
+      lineinfile:
+        path: /root/.bashrc
+        regexp: '^export HISTFILESIZE='
+        line: 'export HISTFILESIZE=20000'
+        create: yes
+        state: present
+    
+    - name: Set HISTCONTROL for root user
+      become: true
+      lineinfile:
+        path: /root/.bashrc
+        regexp: '^export HISTCONTROL='
+        line: 'export HISTCONTROL=ignoredups:erasedups'
+        create: yes
+        state: present
+    
+    - name: Enable histappend for root user
+      become: true
+      lineinfile:
+        path: /root/.bashrc
+        regexp: '^shopt -s histappend'
+        line: 'shopt -s histappend'
+        create: yes
+        state: present
+    
+    - name: Add history -a to PROMPT_COMMAND for root user
+      become: true
+      lineinfile:
+        path: /root/.bashrc
+        regexp: '^PROMPT_COMMAND=.*history -a.*'
+        line: 'PROMPT_COMMAND="history -a; $PROMPT_COMMAND"'
+        create: yes
+        state: present
+
+
     - name: Install netstat and ifconfig and update the cache
       apt:
         name: net-tools
