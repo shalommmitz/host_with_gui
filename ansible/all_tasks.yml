@@ -4,6 +4,27 @@
   become: true
   tasks:
 
+    - name: Check if .bashrc exists
+      ansible.builtin.stat:
+        path: "/home/{{ nonRootUser }}/.bashrc"
+      register: bashrc_stat
+
+    - name: Create .bashrc with correct ownership and permissions if missing
+      ansible.builtin.file:
+        path: "/home/{{ nonRootUser }}/.bashrc"
+        state: touch
+        owner: "{{ nonRootUser }}"
+        group: "{{ nonRootUser }}"
+        mode: '0644'
+      when: not bashrc_stat.stat.exists
+
+    - name: Add h2d and d2h conversion functions
+      ansible.builtin.blockinfile:
+        path: "/home/{{ nonRootUser }}/.bashrc"
+        marker: "# {mark} ANSIBLE h2d/d2h converters"
+        block: |
+          h2d(){ printf '%d\n' "$((16#$1))"; }
+          d2h(){ printf '%X\n' "$1"; }
     # Enhance history for current user
     - name: Set HISTTIMEFORMAT for current user
       lineinfile:
