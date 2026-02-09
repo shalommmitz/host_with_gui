@@ -1,0 +1,5 @@
+sudo apt update
+sudo apt install software-properties-common
+sudo add-apt-repository --yes --update ppa:ansible/ansible
+sudo apt install -qq -y ansible
+ansible-playbook -i hosts --ask-become-pass sched_auto_apt_upgrades.yml | tee sched_auto_apt_upgrades.log

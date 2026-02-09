@@ -1,0 +1,142 @@
+---
+- name: Enable unattended updates (security + non-security) and schedule a daily 03:00 reboot
+  hosts: all
+  connection: local
+  become: true
+
+  vars:
+    # Daily reboot time (24h)
+    reboot_time: "03:00:00"
+    reboot_only_if_required: false
+
+  pre_tasks:
+    - name: Ensure we are on Ubuntu 22.04 or 24.04
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+          - ansible_distribution_version is version("22.04", ">=")
+          - ansible_distribution_version is version("24.04.99", "<=")
+        fail_msg: "This playbook supports Ubuntu 22.04 and 24.04 only."
+
+  tasks:
+    - name: Install unattended upgrades tooling
+      ansible.builtin.apt:
+        name:
+          - unattended-upgrades
+          - apt-listchanges
+        state: present
+        update_cache: true
+
+    # Enable daily unattended upgrades via /etc/apt/apt.conf.d/20auto-upgrades
+    - name: Enable daily APT periodic update + unattended upgrades
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          // Managed by Ansible
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+      notify: Restart unattended upgrades (best effort)
+
+    # Add a small local config that *ensures* -updates is included (non-security),
+    # while keeping Ubuntu’s defaults (security + ESM lines) conceptually intact.
+    - name: Configure unattended-upgrades origins (security + updates)
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/52unattended-upgrades-local
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          // Managed by Ansible
+          // Allow security + non-security updates from official Ubuntu repos
+          Unattended-Upgrade::Allowed-Origins {
+              "${distro_id}:${distro_codename}";
+              "${distro_id}:${distro_codename}-security";
+
+              // If ESM is available on this system, these are safe to keep enabled:
+              "${distro_id}ESMApps:${distro_codename}-apps-security";
+              "${distro_id}ESM:${distro_codename}-infra-security";
+
+              // Non-security updates:
+              "${distro_id}:${distro_codename}-updates";
+          };
+
+          // Keep reboots under *your* 03:00 timer (don’t let unattended-upgrades reboot whenever it wants).
+          Unattended-Upgrade::Automatic-Reboot "false";
+
+          // Sensible hygiene:
+          Unattended-Upgrade::Remove-Unused-Dependencies "true";
+          Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+          Unattended-Upgrade::AutoFixInterruptedDpkg "true";
+      notify: Restart unattended upgrades (best effort)
+
+    - name: Ensure apt systemd timers are enabled (daily unattended runs are timer-driven)
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+      loop:
+        - apt-daily.timer
+        - apt-daily-upgrade.timer
+
+    # Daily reboot via systemd timer (03:00)
+    - name: Install daily reboot service unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/daily-reboot.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Daily scheduled reboot
+          Wants=network-online.target
+          After=network-online.target
+          {% if reboot_only_if_required %}
+          ConditionPathExists=/var/run/reboot-required
+          {% endif %}
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/sbin/shutdown -r now "Daily scheduled reboot"
+      notify: Systemd daemon-reload
+
+    - name: Install daily reboot timer unit (03:00)
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/daily-reboot.timer
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Reboot daily at {{ reboot_time }}
+
+          [Timer]
+          OnCalendar=*-*-* {{ reboot_time }}
+          Persistent=true
+          RandomizedDelaySec=0
+          Unit=daily-reboot.service
+
+          [Install]
+          WantedBy=timers.target
+      notify:
+        - Systemd daemon-reload
+        - Enable daily reboot timer
+
+  handlers:
+    - name: Systemd daemon-reload
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Enable daily reboot timer
+      ansible.builtin.systemd:
+        name: daily-reboot.timer
+        enabled: true
+        state: started
+
+    - name: Restart unattended upgrades (best effort)
+      ansible.builtin.systemd:
+        name: unattended-upgrades.service
+        state: restarted
+      failed_when: false

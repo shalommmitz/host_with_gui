@@ -1,2 +1,3 @@
 *.bak
 ansible/ansible.log
+ansible/sched_auto_apt_upgrades.log
