@@ -4,7 +4,7 @@
   connection: local
   become: true
 
- vars_prompt:
+  vars_prompt:
     - name: ansible_become_password
       prompt: >-
         Enter the user password so this playbook can run privileged (root) tasks
