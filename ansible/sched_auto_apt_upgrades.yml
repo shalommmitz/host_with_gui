@@ -14,9 +14,9 @@
       ansible.builtin.assert:
         that:
           - ansible_distribution == "Ubuntu"
-          - ansible_distribution_version is version("22.04", ">=")
+          - ansible_distribution_version is version("20.04", ">=")
           - ansible_distribution_version is version("24.04.99", "<=")
-        fail_msg: "This playbook supports Ubuntu 22.04 and 24.04 only."
+        fail_msg: "This playbook supports Ubuntu 20.04 and 24.04 only."
 
   tasks:
     - name: Install unattended upgrades tooling
