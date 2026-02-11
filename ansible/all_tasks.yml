@@ -2,6 +2,13 @@
   hosts: all
   connection: local
   become: true
+
+ vars_prompt:
+    - name: ansible_become_password
+      prompt: >-
+        Enter the user password so this playbook can run privileged (root) tasks
+      private: yes
+
   tasks:
 
     - name: Check if .bashrc exists

@@ -6,6 +6,8 @@ You might find it useful, if you need:
      but with all the creature-comfort of a graphical desktop, sound, GUI network setup, etc (not lots of etc)
    - Smaller attack surface
 
+Addition: an Ansible playbook to enable auto-apt-upgrade and optional daily reboots
+
 ## Hardware tip:   
    For a laptop secure storage, I like the 1T SSD 970pro, made by a well known Korean company.  
    This drive supports the OPAL2 encryption standard. Just make sure you actually turn the FDE (Full Disk Encryption) On.

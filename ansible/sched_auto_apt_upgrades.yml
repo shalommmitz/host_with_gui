@@ -4,19 +4,25 @@
   connection: local
   become: true
 
+ vars_prompt:
+    - name: ansible_become_password
+      prompt: >-
+        Enter the user password so this playbook can run privileged (root) tasks
+      private: yes
+
   vars:
     # Daily reboot time (24h)
     reboot_time: "03:00:00"
     reboot_only_if_required: false
 
   pre_tasks:
-    - name: Ensure we are on Ubuntu 22.04 or 24.04
+    - name: Ensure we are on Ubuntu 20.04 to 24.04
       ansible.builtin.assert:
         that:
           - ansible_distribution == "Ubuntu"
           - ansible_distribution_version is version("20.04", ">=")
           - ansible_distribution_version is version("24.04.99", "<=")
-        fail_msg: "This playbook supports Ubuntu 20.04 and 24.04 only."
+        fail_msg: "This playbook supports Ubuntu 20.04 and up to 24.04 only."
 
   tasks:
     - name: Install unattended upgrades tooling
