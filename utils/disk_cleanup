@@ -1,0 +1,631 @@
+#!/usr/bin/env python3
+"""
+Ubuntu disk cleanup (user + system) with before/after disk usage comparison.
+
+What it does (best-effort; continues on errors):
+- Captures and saves `df -hP` output BEFORE and AFTER cleanup
+- Prints a df-like table with BEFORE/AFTER columns
+- Python/pip: purges pip cache for all detected python3.x (user + root)
+- Snap: removes disabled (old) revisions + sets refresh.retain + clears snap download cache
+- APT: autoremove --purge + clean
+- systemd journal: shows size + vacuums to a limit + shows size again
+- Crash + core dumps: removes /var/crash/* and /var/lib/systemd/coredump/*
+- /var/log: deletes log files older than 7 days (excludes /var/log/journal and /var/log/private)
+- systemd tmpfiles: clean
+- Docker: targeted prune (container/image/builder) - no volumes
+- Flatpak: uninstall --unused (user + system)
+- User caches: Trash + thumbnail cache
+- Firefox: detects if running; if yes prompts to close; then deletes cache contents ONLY
+- ISO scan: finds *.iso under $HOME recursively; prints list + sizes; prints suggested rm command (no deletion)
+
+Notes:
+- Close snaps before removing disabled revisions (snap may refuse removal if in use).
+- Close Firefox when prompted (cache files may be locked / recreated immediately).
+- You will likely be prompted for sudo once (or more) if not already authenticated.
+"""
+from __future__ import annotations
+
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+
+def have(cmd: str) -> bool:
+    return shutil.which(cmd) is not None
+
+
+def is_root() -> bool:
+    return hasattr(os, "geteuid") and os.geteuid() == 0
+
+
+def fmt_cmd(cmd: List[str]) -> str:
+    return " ".join(shlex.quote(c) for c in cmd)
+
+
+def human_bytes(num_bytes: int) -> str:
+    # Similar to common "-h" outputs (base 1024)
+    units = ["B", "K", "M", "G", "T", "P"]
+    size = float(num_bytes)
+    for u in units:
+        if size < 1024.0 or u == units[-1]:
+            if u == "B":
+                return f"{int(size)}{u}"
+            s = f"{size:.1f}".rstrip("0").rstrip(".")
+            return f"{s}{u}"
+        size /= 1024.0
+    return f"{num_bytes}B"
+
+
+@dataclass
+class RunResult:
+    ok: bool
+    returncode: int
+    stdout: str = ""
+    stderr: str = ""
+
+
+def run(
+    cmd: List[str],
+    *,
+    sudo: bool = False,
+    sudo_H: bool = False,
+    check: bool = False,
+    capture: bool = False,
+    text: bool = True,
+    quiet: bool = False,
+) -> RunResult:
+    full = cmd[:]
+    if sudo and not is_root():
+        full = ["sudo"] + (["-H"] if sudo_H else []) + full
+
+    if not quiet:
+        print(f"\n==> Running: {fmt_cmd(full)}")
+
+    try:
+        completed = subprocess.run(
+            full,
+            check=check,
+            capture_output=capture,
+            text=text,
+        )
+        out = completed.stdout or ""
+        err = completed.stderr or ""
+
+        if capture and out and not quiet:
+            print(out.rstrip())
+        if capture and err and not quiet:
+            print(err.rstrip(), file=sys.stderr)
+
+        return RunResult(ok=(completed.returncode == 0), returncode=completed.returncode, stdout=out, stderr=err)
+    except subprocess.CalledProcessError as e:
+        print(f"!! Command failed (exit {e.returncode}): {fmt_cmd(full)}", file=sys.stderr)
+        return RunResult(
+            ok=False,
+            returncode=e.returncode,
+            stdout=getattr(e, "stdout", "") or "",
+            stderr=getattr(e, "stderr", "") or "",
+        )
+    except FileNotFoundError:
+        print(f"!! Not found: {cmd[0]}", file=sys.stderr)
+        return RunResult(ok=False, returncode=127)
+
+
+def rm_tree(path: Path) -> None:
+    if path.exists():
+        print(f"==> Deleting directory: {path}")
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        print(f".. Not found: {path}")
+
+
+def rm_children(dir_path: Path) -> None:
+    if not dir_path.exists():
+        print(f".. Not found: {dir_path}")
+        return
+    if not dir_path.is_dir():
+        print(f".. Not a directory: {dir_path}")
+        return
+
+    print(f"==> Deleting contents of: {dir_path}")
+    for child in dir_path.iterdir():
+        try:
+            if child.is_dir():
+                shutil.rmtree(child, ignore_errors=True)
+            else:
+                child.unlink(missing_ok=True)
+        except Exception as e:
+            print(f"!! Failed to delete {child}: {e}", file=sys.stderr)
+
+
+# -------------------- df snapshot + comparison --------------------
+
+DfRow = Dict[str, str]
+DfKey = Tuple[str, str]  # (Filesystem, Mounted on)
+
+
+def df_snapshot_raw() -> str:
+    # -P makes parsing predictable (one filesystem per line; mountpoint is a single field).
+    if not have("df"):
+        return ""
+    r = run(["df", "-hP"], capture=True, quiet=True)
+    return r.stdout or ""
+
+
+def parse_df_hP(output: str) -> List[DfRow]:
+    lines = [ln.strip("\n") for ln in output.splitlines() if ln.strip()]
+    if not lines:
+        return []
+    rows: List[DfRow] = []
+    for ln in lines[1:]:
+        parts = ln.split()
+        if len(parts) < 6:
+            continue
+        fs, size, used, avail, usep, mnt = parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]
+        rows.append(
+            {
+                "Filesystem": fs,
+                "Size": size,
+                "Used": used,
+                "Avail": avail,
+                "Use%": usep,
+                "Mounted": mnt,
+            }
+        )
+    return rows
+
+
+def save_text(path: Path, text: str) -> None:
+    path.write_text(text, encoding="utf-8", errors="replace")
+    print(f"==> Saved: {path}")
+
+
+def df_compare_table(before: List[DfRow], after: List[DfRow], *, only_changed: bool = True) -> str:
+    before_map: Dict[DfKey, DfRow] = {(r["Filesystem"], r["Mounted"]): r for r in before}
+    after_map: Dict[DfKey, DfRow] = {(r["Filesystem"], r["Mounted"]): r for r in after}
+
+    ordered_keys: List[DfKey] = []
+    for r in before:
+        k = (r["Filesystem"], r["Mounted"])
+        if k not in ordered_keys:
+            ordered_keys.append(k)
+    for r in after:
+        k = (r["Filesystem"], r["Mounted"])
+        if k not in ordered_keys:
+            ordered_keys.append(k)
+
+    def changed(k: DfKey) -> bool:
+        b = before_map.get(k)
+        a = after_map.get(k)
+        # If added/removed, it's a change.
+        if b is None or a is None:
+            return True
+        # Consider these fields for change detection.
+        for f in ("Size", "Used", "Avail", "Use%"):
+            if b.get(f, "") != a.get(f, ""):
+                return True
+        return False
+
+    keys = [k for k in ordered_keys if (not only_changed) or changed(k)]
+
+    hdr = [
+        "Filesystem",
+        "Mounted",
+        "Size(B)",
+        "Used(B)",
+        "Avail(B)",
+        "Use%(B)",
+        "Size(A)",
+        "Used(A)",
+        "Avail(A)",
+        "Use%(A)",
+    ]
+    out_rows: List[List[str]] = [hdr]
+
+    for k in keys:
+        b = before_map.get(k)
+        a = after_map.get(k)
+        out_rows.append(
+            [
+                k[0],
+                k[1],
+                (b or {}).get("Size", "-"),
+                (b or {}).get("Used", "-"),
+                (b or {}).get("Avail", "-"),
+                (b or {}).get("Use%", "-"),
+                (a or {}).get("Size", "-"),
+                (a or {}).get("Used", "-"),
+                (a or {}).get("Avail", "-"),
+                (a or {}).get("Use%", "-"),
+            ]
+        )
+
+    if len(out_rows) == 1:
+        return "(No filesystem changes detected between BEFORE and AFTER.)"
+
+    widths = [0] * len(hdr)
+    for row in out_rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+
+    def fmt_row(row: List[str]) -> str:
+        cells: List[str] = []
+        for i, cell in enumerate(row):
+            if i < 2:
+                cells.append(cell.ljust(widths[i]))
+            else:
+                cells.append(cell.rjust(widths[i]))
+        return "  ".join(cells)
+
+    lines: List[str] = [fmt_row(out_rows[0])]
+    lines.append("  ".join("-" * w for w in widths))
+    for row in out_rows[1:]:
+        lines.append(fmt_row(row))
+    return "\n".join(lines)
+
+
+def detect_python_executables() -> List[str]:
+    candidates: List[str] = []
+    for minor in range(6, 20):
+        exe = f"python3.{minor}"
+        if have(exe):
+            candidates.append(exe)
+    if have("python3"):
+        candidates.append("python3")
+
+    seen: set[str] = set()
+    uniq: List[str] = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            uniq.append(c)
+    return uniq
+
+
+def pip_cache_purge_for_python(python_exe: str) -> None:
+    r = run([python_exe, "-m", "pip", "--version"], capture=True)
+    if not r.ok:
+        print(f".. Skipping pip cache purge for {python_exe} (pip not available).")
+        return
+
+    print(f"==> Purging pip cache for {python_exe} (user)")
+    run([python_exe, "-m", "pip", "cache", "purge"])
+
+    print(f"==> Purging pip cache for {python_exe} (root)")
+    run([python_exe, "-m", "pip", "cache", "purge"], sudo=True, sudo_H=True)
+
+
+def snap_remove_disabled_revisions() -> None:
+    if not have("snap"):
+        print(".. snap not found; skipping snap cleanup.")
+        return
+
+    print("==> Snap: set refresh.retain=2 to reduce old revision accumulation")
+    run(["snap", "set", "system", "refresh.retain=2"], sudo=True)
+
+    print("==> Snap: listing all revisions and removing disabled (old) revisions")
+    try:
+        out = subprocess.check_output(["snap", "list", "--all"], text=True, errors="replace")
+    except Exception as e:
+        print(f"!! Failed to run snap list --all: {e}", file=sys.stderr)
+        return
+
+    lines = [ln.rstrip("\n") for ln in out.splitlines() if ln.strip()]
+    if not lines:
+        print(".. snap list output empty; skipping.")
+        return
+
+    disabled: List[Tuple[str, str]] = []
+    for ln in lines[1:]:
+        parts = ln.split()
+        if len(parts) < 6:
+            continue
+        name = parts[0]
+        rev = parts[2]
+        notes = " ".join(parts[5:])
+        if "disabled" in notes:
+            disabled.append((name, rev))
+
+    if not disabled:
+        print(".. No disabled snap revisions found.")
+    else:
+        print(f"==> Found {len(disabled)} disabled snap revision(s).")
+        for name, rev in disabled:
+            print(f"==> Removing disabled snap revision: {name} rev {rev}")
+            run(["snap", "remove", name, f"--revision={rev}"], sudo=True)
+
+    print("==> Snap: clearing snap download cache (/var/lib/snapd/cache/*)")
+    run(["bash", "-lc", "rm -f /var/lib/snapd/cache/*"], sudo=True)
+
+
+def apt_cleanup() -> None:
+    if not have("apt"):
+        print(".. apt not found; skipping APT cleanup.")
+        return
+
+    print("==> APT: autoremove --purge (removes unused deps, old kernels, etc.)")
+    run(["apt", "autoremove", "--purge", "-y"], sudo=True)
+
+    print("==> APT: clean (removes downloaded .deb archives)")
+    run(["apt", "clean"], sudo=True)
+
+
+def journal_cleanup(vacuum_size: str = "200M") -> None:
+    if not have("journalctl"):
+        print(".. journalctl not found; skipping journal cleanup.")
+        return
+
+    print("==> systemd-journald: current disk usage")
+    run(["journalctl", "--disk-usage"], sudo=True)
+
+    print(f"==> systemd-journald: vacuum to at most {vacuum_size}")
+    run(["journalctl", f"--vacuum-size={vacuum_size}"], sudo=True)
+
+    print("==> systemd-journald: disk usage after vacuum")
+    run(["journalctl", "--disk-usage"], sudo=True)
+
+
+def crash_and_coredump_cleanup() -> None:
+    print("==> Removing crash reports (/var/crash/*)")
+    run(["bash", "-lc", "rm -f /var/crash/*"], sudo=True)
+
+    print("==> Removing systemd core dumps (/var/lib/systemd/coredump/*)")
+    run(["bash", "-lc", "rm -f /var/lib/systemd/coredump/*"], sudo=True)
+
+
+def var_log_cleanup(days: int = 7) -> None:
+    if not Path("/var/log").exists():
+        print(".. /var/log not found; skipping /var/log cleanup.")
+        return
+
+    print(f"==> /var/log: deleting log files older than {days} day(s) (excluding journal/private dirs)")
+    count_cmd = (
+        "find /var/log "
+        r"\( -path '/var/log/journal' -o -path '/var/log/journal/*' -o -path '/var/log/private' -o -path '/var/log/private/*' \) -prune "
+        f"-o -type f -mtime +{days} -print | wc -l"
+    )
+    run(["bash", "-lc", count_cmd], sudo=True, capture=True)
+
+    delete_cmd = (
+        "find /var/log "
+        r"\( -path '/var/log/journal' -o -path '/var/log/journal/*' -o -path '/var/log/private' -o -path '/var/log/private/*' \) -prune "
+        f"-o -type f -mtime +{days} -delete"
+    )
+    run(["bash", "-lc", delete_cmd], sudo=True)
+
+
+def tmpfiles_cleanup() -> None:
+    if not have("systemd-tmpfiles"):
+        print(".. systemd-tmpfiles not found; skipping tmpfiles cleanup.")
+        return
+    print("==> systemd-tmpfiles: clean using system rules")
+    run(["systemd-tmpfiles", "--clean"], sudo=True)
+
+
+def docker_targeted_prune() -> None:
+    if not have("docker"):
+        print(".. docker not found; skipping docker cleanup.")
+        return
+
+    print("==> Docker: checking access")
+    r = run(["docker", "info"])
+    docker_use_sudo = False
+    if not r.ok and not is_root():
+        print(".. docker info failed; trying with sudo")
+        r2 = run(["docker", "info"], sudo=True)
+        if r2.ok:
+            docker_use_sudo = True
+        else:
+            print("!! Docker not accessible (even with sudo). Skipping docker prune.", file=sys.stderr)
+            return
+
+    def d(cmd: List[str]) -> None:
+        run(cmd, sudo=docker_use_sudo)
+
+    print("==> Docker: targeted prune (no volumes)")
+    print("    1) Remove stopped containers")
+    d(["docker", "container", "prune", "-f"])
+
+    print("    2) Remove unused images (may trigger re-pull/rebuild later)")
+    d(["docker", "image", "prune", "-a", "-f"])
+
+    print("    3) Remove builder cache (can slow future builds)")
+    d(["docker", "builder", "prune", "-a", "-f"])
+
+
+def flatpak_cleanup() -> None:
+    if not have("flatpak"):
+        print(".. flatpak not found; skipping flatpak cleanup.")
+        return
+
+    print("==> Flatpak: uninstall --unused (user)")
+    run(["flatpak", "uninstall", "--unused", "-y"])
+
+    print("==> Flatpak: uninstall --unused (system)")
+    run(["flatpak", "uninstall", "--unused", "-y"], sudo=True)
+
+
+def user_cache_cleanup() -> None:
+    home = Path.home()
+
+    print("==> User: emptying Trash (files + info)")
+    rm_children(home / ".local" / "share" / "Trash" / "files")
+    rm_children(home / ".local" / "share" / "Trash" / "info")
+
+    print("==> User: clearing thumbnail cache (~/.cache/thumbnails)")
+    rm_children(home / ".cache" / "thumbnails")
+
+
+def firefox_is_running() -> bool:
+    if have("pgrep"):
+        for name in ("firefox", "firefox-bin", "firefox.real"):
+            r = subprocess.run(["pgrep", "-x", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if r.returncode == 0:
+                return True
+        r = subprocess.run(["pgrep", "-f", r"\bfirefox\b"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return r.returncode == 0
+
+    try:
+        out = subprocess.check_output(["ps", "aux"], text=True, errors="replace")
+        return "firefox" in out
+    except Exception:
+        return False
+
+
+def prompt_close_firefox_if_needed() -> None:
+    if firefox_is_running():
+        print("\n!! Firefox appears to be running.")
+        print("   Please CLOSE Firefox now to avoid locked files / immediate cache recreation.")
+        try:
+            input("   Press ENTER to continue once Firefox is closed (Ctrl+C to abort)... ")
+        except KeyboardInterrupt:
+            print("\nAborted by user.")
+            raise SystemExit(130)
+
+
+def firefox_cache_cleanup() -> None:
+    """
+    Delete Firefox cached contents without touching the profile data in ~/.mozilla/firefox.
+    Targets: ~/.cache/mozilla/firefox/**/{cache2,startupCache}
+    """
+    prompt_close_firefox_if_needed()
+
+    home = Path.home()
+    cache_root = home / ".cache" / "mozilla" / "firefox"
+
+    print("==> Firefox: clearing cache contents ONLY (not bookmarks/autofill/profile data)")
+
+    if not cache_root.exists():
+        print(f".. Firefox cache dir not found: {cache_root}")
+        return
+
+    for profile_cache_dir in sorted(p for p in cache_root.iterdir() if p.is_dir()):
+        for sub in ("cache2", "startupCache"):
+            target = profile_cache_dir / sub
+            if target.exists():
+                rm_tree(target)
+            else:
+                print(f".. Not found: {target}")
+
+
+def find_iso_files_and_suggest_rm() -> None:
+    home = Path.home()
+    print(f"==> ISO scan: searching for *.iso under {home} (recursive)")
+
+    iso_paths: List[Path] = []
+    for root, dirs, files in os.walk(home, topdown=True, followlinks=False):
+        skip = {".cache", ".local/share/Trash", ".steam", ".var", "node_modules"}
+        dirs[:] = [d for d in dirs if d not in skip]
+        for fn in files:
+            if fn.lower().endswith(".iso"):
+                iso_paths.append(Path(root) / fn)
+
+    if not iso_paths:
+        print(".. No .iso files found under HOME.")
+        return
+
+    print(f"==> Found {len(iso_paths)} .iso file(s):")
+    for p in sorted(iso_paths):
+        try:
+            sz = p.stat().st_size
+            print(f"  - {human_bytes(sz):>8}  {p}")
+        except Exception as e:
+            print(f"  - (size unknown) {p}  !! {e}", file=sys.stderr)
+
+    print("\n==> If you want to remove them, here is a suggested command (NOT executed):")
+    quoted = [shlex.quote(str(p)) for p in sorted(iso_paths)]
+    print("rm -- \\")
+    for i, q in enumerate(quoted):
+        end = " \\" if i != len(quoted) - 1 else ""
+        print(f"  {q}{end}")
+
+
+def main() -> int:
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = Path.cwd()
+
+    before_path = out_dir / f"df_before_{ts}.txt"
+    after_path = out_dir / f"df_after_{ts}.txt"
+    compare_path = out_dir / f"df_compare_{ts}.txt"
+
+    print("=== Ubuntu disk cleanup starting ===")
+
+    print("\n=== Capturing disk usage BEFORE (df -hP) ===")
+    df_before_raw = df_snapshot_raw()
+    if df_before_raw:
+        save_text(before_path, df_before_raw)
+    else:
+        print(".. Could not capture df output (df missing?).")
+    df_before = parse_df_hP(df_before_raw)
+
+    print("\n=== Python/pip cache purge ===")
+    pythons = detect_python_executables()
+    if not pythons:
+        print(".. No python3 executables detected; skipping pip cache purge.")
+    else:
+        print(f"==> Detected Python executables: {', '.join(pythons)}")
+        for py in pythons:
+            pip_cache_purge_for_python(py)
+
+    print("\n=== Snap cleanup ===")
+    snap_remove_disabled_revisions()
+
+    print("\n=== APT cleanup ===")
+    apt_cleanup()
+
+    print("\n=== Journal cleanup ===")
+    journal_cleanup(vacuum_size="200M")
+
+    print("\n=== Crash/core dump cleanup ===")
+    crash_and_coredump_cleanup()
+
+    print("\n=== /var/log cleanup ===")
+    var_log_cleanup(days=7)
+
+    print("\n=== systemd tmpfiles cleanup ===")
+    tmpfiles_cleanup()
+
+    print("\n=== Docker cleanup (targeted prune) ===")
+    docker_targeted_prune()
+
+    print("\n=== Flatpak cleanup ===")
+    flatpak_cleanup()
+
+    print("\n=== User cache cleanup ===")
+    user_cache_cleanup()
+
+    print("\n=== Firefox cache cleanup ===")
+    firefox_cache_cleanup()
+
+    print("\n=== ISO scan (suggest only) ===")
+    find_iso_files_and_suggest_rm()
+
+    print("\n=== Capturing disk usage AFTER (df -hP) ===")
+    df_after_raw = df_snapshot_raw()
+    if df_after_raw:
+        save_text(after_path, df_after_raw)
+    else:
+        print(".. Could not capture df output (df missing?).")
+    df_after = parse_df_hP(df_after_raw)
+
+    print("\n=== Disk usage BEFORE vs AFTER (df-like table) ===")
+    table = df_compare_table(df_before, df_after)
+    print(table)
+    save_text(compare_path, table + "\n")
+
+    print("\n=== Outputs saved ===")
+    print(f"  - {before_path}")
+    print(f"  - {after_path}")
+    print(f"  - {compare_path}")
+
+    print("\n=== Cleanup complete ===")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
