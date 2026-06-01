@@ -8,6 +8,7 @@
     ansible_python_interpreter: /usr/bin/python3
     desktop_package: xubuntu-core
     disable_systemd_networkd: true
+
     bash_history_lines:
       - regexp: '^export HISTTIMEFORMAT='
         line: 'export HISTTIMEFORMAT="%d%b%Y-%H%M.%S "'
@@ -21,6 +22,7 @@
         line: 'shopt -s histappend'
       - regexp: '^PROMPT_COMMAND=.*history -a.*'
         line: 'PROMPT_COMMAND="history -a; $PROMPT_COMMAND"'
+
     xfce_settings:
       - channel: xfce4-screensaver
         property: /idle-activation-enabled
@@ -218,10 +220,25 @@
       environment:
         DEBIAN_FRONTEND: noninteractive
 
+    # Important: set the display-manager choice before installing the desktop.
+    # Otherwise, if gdm/gdm3 is pulled in as a dependency/recommendation during the
+    # xubuntu-core transaction, it may become the active display manager.
+    - name: Preseed LightDM as default display manager
+      ansible.builtin.debconf:
+        name: lightdm
+        question: shared/default-x-display-manager
+        value: lightdm
+        vtype: select
+
     - name: Install Xubuntu desktop packages
       ansible.builtin.apt:
         name:
           - "{{ desktop_package }}"
+          - lightdm
+          - lightdm-gtk-greeter
+          - lightdm-gtk-greeter-settings
+          - xubuntu-default-settings
+          - xubuntu-artwork
           - dbus-x11
           - xfconf
         state: present
@@ -229,6 +246,52 @@
         update_cache: true
       environment:
         DEBIAN_FRONTEND: noninteractive
+
+    - name: Ensure /etc/X11 exists
+      ansible.builtin.file:
+        path: /etc/X11
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Force LightDM as default display manager
+      ansible.builtin.copy:
+        dest: /etc/X11/default-display-manager
+        content: "/usr/sbin/lightdm\n"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Enable LightDM for next boot
+      ansible.builtin.systemd:
+        name: lightdm.service
+        enabled: true
+      ignore_errors: true
+
+    # Do not stop the current display manager here. Stopping gdm during a GUI run
+    # could log the user out. This only prevents it from being used after reboot.
+    - name: Disable GDM for next boot if present
+      ansible.builtin.systemd:
+        name: gdm.service
+        enabled: false
+      ignore_errors: true
+
+    - name: Disable GDM3 for next boot if present
+      ansible.builtin.systemd:
+        name: gdm3.service
+        enabled: false
+      ignore_errors: true
+
+    - name: Show selected display manager file
+      ansible.builtin.command:
+        cmd: cat /etc/X11/default-display-manager
+      register: selected_display_manager
+      changed_when: false
+
+    - name: Print selected display manager
+      ansible.builtin.debug:
+        var: selected_display_manager.stdout
 
     - name: Disable IPv6 and console blanking in GRUB
       ansible.builtin.lineinfile:
