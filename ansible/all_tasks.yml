@@ -1,341 +1,458 @@
-- name: setup hosts
+- name: Setup Ubuntu host with Xubuntu GUI
   hosts: all
   connection: local
+  gather_facts: false
   become: true
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    desktop_package: xubuntu-core
+    disable_systemd_networkd: true
+    bash_history_lines:
+      - regexp: '^export HISTTIMEFORMAT='
+        line: 'export HISTTIMEFORMAT="%d%b%Y-%H%M.%S "'
+      - regexp: '^export HISTSIZE='
+        line: 'export HISTSIZE=10000'
+      - regexp: '^export HISTFILESIZE='
+        line: 'export HISTFILESIZE=20000'
+      - regexp: '^export HISTCONTROL='
+        line: 'export HISTCONTROL=ignoredups:erasedups'
+      - regexp: '^shopt -s histappend'
+        line: 'shopt -s histappend'
+      - regexp: '^PROMPT_COMMAND=.*history -a.*'
+        line: 'PROMPT_COMMAND="history -a; $PROMPT_COMMAND"'
+    xfce_settings:
+      - channel: xfce4-screensaver
+        property: /idle-activation-enabled
+        type: bool
+        value: "false"
+      - channel: xfce4-screensaver
+        property: /lock-enabled
+        type: bool
+        value: "false"
+      - channel: xfce4-screensaver
+        property: /lock-delay
+        type: int
+        value: "0"
+      - channel: xfce4-screensaver
+        property: /saver/enabled
+        type: bool
+        value: "false"
+      - channel: xfce4-power-manager
+        property: /xfce4-power-manager/lock-screen-suspend-hibernate
+        type: bool
+        value: "false"
+      - channel: xfce4-power-manager
+        property: /xfce4-power-manager/dpms-enabled
+        type: bool
+        value: "false"
+      - channel: xfce4-power-manager
+        property: /xfce4-power-manager/blank-on-ac
+        type: int
+        value: "0"
 
   vars_prompt:
     - name: ansible_become_password
       prompt: >-
         Enter the user password so this playbook can run privileged (root) tasks
-      private: yes
+      private: true
+
+  pre_tasks:
+    - name: Validate nonRootUser was provided
+      ansible.builtin.assert:
+        that:
+          - nonRootUser is defined
+          - nonRootUser | length > 0
+        fail_msg: 'Run with --extra-vars "nonRootUser=$USER"'
+      become: false
+
+    - name: Check for classic sudo on sudo-rs systems
+      ansible.builtin.stat:
+        path: /usr/bin/sudo.ws
+      register: sudo_ws
+      become: false
+
+    - name: Select sudo executable
+      ansible.builtin.set_fact:
+        ansible_become_exe: "{{ '/usr/bin/sudo.ws' if sudo_ws.stat.exists else 'sudo' }}"
+      become: false
+
+    - name: Gather facts after sudo executable selection
+      ansible.builtin.setup:
+      become: false
+
+    - name: Read desktop user account
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ nonRootUser }}"
+      become: false
+
+    - name: Set desktop user home directory
+      ansible.builtin.set_fact:
+        non_root_home: "{{ ansible_facts.getent_passwd[nonRootUser][4] }}"
+      become: false
+
+  handlers:
+    - name: Update grub
+      ansible.builtin.command:
+        cmd: update-grub
+
+    - name: Generate netplan
+      ansible.builtin.command:
+        cmd: netplan generate
+      listen: Apply netplan
+
+    - name: Apply netplan
+      ansible.builtin.command:
+        cmd: netplan apply
+      listen: Apply netplan
 
   tasks:
-
-    - name: Check if .bashrc exists
+    - name: Check desktop user .bashrc
       ansible.builtin.stat:
-        path: "/home/{{ nonRootUser }}/.bashrc"
-      register: bashrc_stat
+        path: "{{ non_root_home }}/.bashrc"
+      register: desktop_bashrc
 
-    - name: Create .bashrc with correct ownership and permissions if missing
+    - name: Create desktop user .bashrc if missing
       ansible.builtin.file:
-        path: "/home/{{ nonRootUser }}/.bashrc"
+        path: "{{ non_root_home }}/.bashrc"
         state: touch
         owner: "{{ nonRootUser }}"
         group: "{{ nonRootUser }}"
-        mode: '0644'
-      when: not bashrc_stat.stat.exists
+        mode: "0644"
+      when: not desktop_bashrc.stat.exists
+
+    - name: Ensure desktop user .bashrc ownership and permissions
+      ansible.builtin.file:
+        path: "{{ non_root_home }}/.bashrc"
+        state: file
+        owner: "{{ nonRootUser }}"
+        group: "{{ nonRootUser }}"
+        mode: "0644"
 
     - name: Add h2d and d2h conversion functions
       ansible.builtin.blockinfile:
-        path: "/home/{{ nonRootUser }}/.bashrc"
+        path: "{{ non_root_home }}/.bashrc"
         marker: "# {mark} ANSIBLE h2d/d2h converters"
         block: |
           h2d(){ printf '%d\n' "$((16#$1))"; }
           d2h(){ printf '%X\n' "$1"; }
-    # Enhance history for current user
-    - name: Set HISTTIMEFORMAT for current user
-      lineinfile:
-        path: "/home/{{nonRootUser}}/.bashrc"
-        regexp: '^export HISTTIMEFORMAT='
-        line: 'export HISTTIMEFORMAT="%d%b%Y-%H%M.%S "'
-        create: yes
-        state: present
-    
-    - name: Set HISTSIZE for current user
-      lineinfile:
-        path: "/home/{{nonRootUser}}/.bashrc"
-        regexp: '^export HISTSIZE='
-        line: 'export HISTSIZE=10000'
-        create: yes
-        state: present
-    
-    - name: Set HISTFILESIZE for current user
-      lineinfile:
-        path: "/home/{{nonRootUser}}/.bashrc"
-        regexp: '^export HISTFILESIZE='
-        line: 'export HISTFILESIZE=20000'
-        create: yes
-        state: present
-    
-    - name: Set HISTCONTROL for current user
-      lineinfile:
-        path: "/home/{{nonRootUser}}/.bashrc"
-        regexp: '^export HISTCONTROL='
-        line: 'export HISTCONTROL=ignoredups:erasedups'
-        create: yes
-        state: present
-    
-    - name: Enable histappend for current user
-      lineinfile:
-        path: "/home/{{nonRootUser}}/.bashrc"
-        regexp: '^shopt -s histappend'
-        line: 'shopt -s histappend'
-        create: yes
-        state: present
-    
-    - name: Add history -a to PROMPT_COMMAND for current user
-      lineinfile:
-        path: "/home/{{nonRootUser}}/.bashrc"
-        regexp: '^PROMPT_COMMAND=.*history -a.*'
-        line: 'PROMPT_COMMAND="history -a; $PROMPT_COMMAND"'
-        create: yes
-        state: present
-    
-    # Enhance history for root user
-    - name: Set HISTTIMEFORMAT for root user
-      become: true
-      lineinfile:
-        path: /root/.bashrc
-        regexp: '^export HISTTIMEFORMAT='
-        line: 'export HISTTIMEFORMAT="%d%b%Y-%H%M.%S "'
-        create: yes
-        state: present
-    
-    - name: Set HISTSIZE for root user
-      become: true
-      lineinfile:
-        path: /root/.bashrc
-        regexp: '^export HISTSIZE='
-        line: 'export HISTSIZE=10000'
-        create: yes
-        state: present
-    
-    - name: Set HISTFILESIZE for root user
-      become: true
-      lineinfile:
-        path: /root/.bashrc
-        regexp: '^export HISTFILESIZE='
-        line: 'export HISTFILESIZE=20000'
-        create: yes
-        state: present
-    
-    - name: Set HISTCONTROL for root user
-      become: true
-      lineinfile:
-        path: /root/.bashrc
-        regexp: '^export HISTCONTROL='
-        line: 'export HISTCONTROL=ignoredups:erasedups'
-        create: yes
-        state: present
-    
-    - name: Enable histappend for root user
-      become: true
-      lineinfile:
-        path: /root/.bashrc
-        regexp: '^shopt -s histappend'
-        line: 'shopt -s histappend'
-        create: yes
-        state: present
-    
-    - name: Add history -a to PROMPT_COMMAND for root user
-      become: true
-      lineinfile:
-        path: /root/.bashrc
-        regexp: '^PROMPT_COMMAND=.*history -a.*'
-        line: 'PROMPT_COMMAND="history -a; $PROMPT_COMMAND"'
-        create: yes
-        state: present
 
+    - name: Configure bash history for desktop user
+      ansible.builtin.lineinfile:
+        path: "{{ non_root_home }}/.bashrc"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        create: true
+        state: present
+        owner: "{{ nonRootUser }}"
+        group: "{{ nonRootUser }}"
+        mode: "0644"
+      loop: "{{ bash_history_lines }}"
 
-    - name: Install netstat and ifconfig and update the cache
-      apt:
-        name: net-tools
-        state: latest
-        update_cache: yes
-    - name: Install build-essential
-      apt:
-        name: build-essential
-        state: latest
-    - name: "Install Xubuntu Core. (workaround: Ansible's apt module does not support ^)"
-      shell: "apt -qq -y install xubuntu-core"
-    - name: "Verify Xubuntu Core is correctly installed"
-      apt:
-        pkg: "xubuntu-core*"
-        state: latest
-    - name: "Disable IPv6: modify conf file & disable blanking screen on incactivy"
-      lineinfile:
-        dest=/etc/default/grub
-        regex="GRUB_CMDLINE_LINUX_DEFAULT=\"\""
-        line="GRUB_CMDLINE_LINUX_DEFAULT=\"ipv6.disable=1 consoleblank=0\""
-        backup=yes
-    - name: "Disable IPv6: enact change"
-      shell:
-        update-grub
-    - name: Remove ufw  
-      apt:
+    - name: Check root .bashrc
+      ansible.builtin.stat:
+        path: /root/.bashrc
+      register: root_bashrc
+
+    - name: Create root .bashrc if missing
+      ansible.builtin.file:
+        path: /root/.bashrc
+        state: touch
+        owner: root
+        group: root
+        mode: "0644"
+      when: not root_bashrc.stat.exists
+
+    - name: Ensure root .bashrc ownership and permissions
+      ansible.builtin.file:
+        path: /root/.bashrc
+        state: file
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Configure bash history for root user
+      ansible.builtin.lineinfile:
+        path: /root/.bashrc
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        create: true
+        state: present
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ bash_history_lines }}"
+
+    - name: Update apt package cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Ensure software-properties-common is installed
+      ansible.builtin.apt:
+        name: software-properties-common
+        state: present
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Enable Ubuntu universe repository
+      ansible.builtin.command:
+        cmd: add-apt-repository --yes universe
+      register: universe_repo
+      changed_when: >-
+        'Adding component' in universe_repo.stdout or
+        'enabled' in universe_repo.stdout or
+        'Adding' in universe_repo.stdout
+      when: ansible_distribution == "Ubuntu"
+
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - build-essential
+          - net-tools
+        state: present
+        update_cache: true
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Install Xubuntu desktop packages
+      ansible.builtin.apt:
+        name:
+          - "{{ desktop_package }}"
+          - dbus-x11
+          - xfconf
+        state: present
+        install_recommends: true
+        update_cache: true
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Disable IPv6 and console blanking in GRUB
+      ansible.builtin.lineinfile:
+        path: /etc/default/grub
+        regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+        line: 'GRUB_CMDLINE_LINUX_DEFAULT="ipv6.disable=1 consoleblank=0"'
+        backup: true
+      notify: Update grub
+
+    - name: Remove ufw
+      ansible.builtin.apt:
         name: ufw
         state: absent
-    - name: Install Iptables  
-      apt:
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Preseed iptables-persistent IPv4 autosave prompt
+      ansible.builtin.debconf:
         name: iptables-persistent
-        state: latest
-    - name: Create Iptables rule file for IPV4
-      copy:
-        dest: /etc/iptables/rules.v4
-        mode: 0600
-        owner: root
-        group: root
-        src: rules.v4
-    - name: Create Iptables rule file for IPV6 (blocks all)
-      copy:
-        dest: /etc/iptables/rules.v6
-        mode: 0600
-        owner: root
-        group: root
-        src: rules.v6
-    - name: Create Iptables rule file for debug (allows all)
-      copy:
-        dest: /etc/iptables/rules.allow_all
-        mode: 0600
-        owner: root
-        group: root
-        src: rules.allow_all
-    - name: "Disable CUPS"
-      ansible.builtin.systemd:
-        name: cups
-        enabled: no
-    - name: "autologin: create empty conf file"
-      file:
-        path: "/etc/lightdm/lightdm.conf.d/70-autologin.conf"
-        state: touch
-    - name: "autologin: Insert lines"
-      blockinfile:
-        path: "/etc/lightdm/lightdm.conf.d/70-autologin.conf"
-        block:  |
-          [SeatDefaults]
-          autologin-user={{nonRootUser}}
-    - name: "Remove un-needed folder ~/Public"
-      file:
-        path: "/home/{{nonRootUser}}/Public/"
-        state: absent
-    - name: "Remove un-needed folder ~/Music"
-      file:
-        path: "/home/{{nonRootUser}}/Music/"
-        state: absent
-    - name: "Remove un-needed folder ~/Documents"
-      file:
-        path: "/home/{{nonRootUser}}/Documents/"
-        state: absent
-    - name: "Remove un-needed folder ~/Videos"
-      file:
-        path: "/home/{{nonRootUser}}/Videos/"
-        state: absent
-    - name: "Remove un-needed folder ~/Templates"
-      file:
-        path: "/home/{{nonRootUser}}/Templates/"
-        state: absent
-    - name: "Enable Network Manager: check if 20.04 file exists"
-      stat:
-        path: /etc/netplan/00-installer-config.yaml
-      register: netplan_config_2004
-    - name: "Enable Network Manager 20.04: set NM as renderer"
-      lineinfile:
-        path: /etc/netplan/00-installer-config.yaml
-        insertafter: "^network:$" 
-        line: "  renderer: NetworkManager"
-        firstmatch: yes
-        state: present  
-      when: netplan_config_2004.stat.exists
-    - name: "Enable Network Manager: check if 24.04 file exists"
-      stat:
-        path: /etc/netplan/50-cloud-init.yaml
-      register: netplan_config_2004
-    - name: "Enable Network Manager 24.04: set NM as renderer"
-      lineinfile:
-        path: /etc/netplan/50-cloud-init.yaml
-        insertafter: "^network:$" 
-        line: "    renderer: NetworkManager"
-        firstmatch: yes
-        state: present  
-      when: netplan_config_2004.stat.exists
-    - name: "Enable Network Manager: re-configure netplan 1"
-      shell:
-        "netplan generate"    
-    - name: "Enable Network Manager: re-configure netplan 2"
-      shell:
-        "netplan apply"
-    - name: "Disable the networkd-wait-online service"
-      service:
-        name:    systemd-networkd-wait-online
-        enabled: no
-        state:   stopped
-    - name: "Disable networkd"
-      ansible.builtin.systemd:
-        name: systemd-networkd
-        enabled: no
-
-    - name: Disable automatic screensaver start
-      community.general.xfconf:
-        channel: xfce4-screensaver
-        property: /idle-activation-enabled
-        value: false
-        value_type: "bool"
-    - name: Disable “lock screen after” (set to Never)
-      community.general.xfconf:
-        channel: xfce4-screensaver
-        property: /lock-enabled
+        question: iptables-persistent/autosave_v4
         value: "false"
-        value_type: bool
-    - name: Ensure lock delay is zero seconds
-      community.general.xfconf:
-        channel: xfce4-screensaver
-        property: /lock-delay
-        value: 0
-        value_type: "int"
+        vtype: boolean
 
-    - name: "Disable screen saver"
-      become: false
-      xfconf:
-        channel: "xfce4-screensaver"
-        property: "/saver/enabled"
-        value_type: "bool"
-        value: false
-    - name: "Disable lockscreen by the power manager"
-      become: false
-      xfconf:
-        channel: 'xfce4-power-manager'
-        property: '/xfce4-power-manager/lock-screen-suspend-hibernate'
-        value_type: "bool"
-        value: false
-    - name: "Disable controlling of the display by the power manager"
-      become: false
-      xfconf:
-        channel: 'xfce4-power-manager'
-        property: '/xfce4-power-manager/dpms-enabled'
-        value_type: "bool"
-        value: false
-    - name: "Disable blanking the display after no activity"
-      become: false
-      xfconf:
-        channel: 'xfce4-power-manager'
-        property: '/xfce4-power-manager/blank-on-ac'
-        value_type: "int"
-        value: 0
-    - name: "Disable systemd-networkd-wait-online"
-      systemd:
-        name: systemd-networkd-wait-online
+    - name: Preseed iptables-persistent IPv6 autosave prompt
+      ansible.builtin.debconf:
+        name: iptables-persistent
+        question: iptables-persistent/autosave_v6
+        value: "false"
+        vtype: boolean
+
+    - name: Install iptables-persistent
+      ansible.builtin.apt:
+        name: iptables-persistent
+        state: present
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Ensure iptables directory exists
+      ansible.builtin.file:
+        path: /etc/iptables
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create iptables rule file for IPv4
+      ansible.builtin.copy:
+        dest: /etc/iptables/rules.v4
+        mode: "0600"
+        owner: root
+        group: root
+        content: |
+          *filter
+          :INPUT ACCEPT [0:0]
+          :FORWARD ACCEPT [0:0]
+          :OUTPUT ACCEPT [0:0]
+          -A INPUT -i lo -j ACCEPT
+          -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+          # Uncomment the below line to allow incoming ssh on port 7777
+          #-A INPUT -m state --state NEW -m tcp -p TCP --dport 7777 -j ACCEPT
+          # Uncomment the below line to allow incoming multicast packets
+          #-A INPUT -m pkttype --pkt-type multicast -j ACCEPT
+          -A INPUT -j REJECT --reject-with icmp-port-unreachable
+          -A FORWARD -j REJECT --reject-with icmp-port-unreachable
+          COMMIT
+
+    - name: Create iptables rule file for IPv6
+      ansible.builtin.copy:
+        dest: /etc/iptables/rules.v6
+        mode: "0600"
+        owner: root
+        group: root
+        content: |
+          *filter
+          :INPUT ACCEPT [0:0]
+          :FORWARD ACCEPT [0:0]
+          :OUTPUT ACCEPT [0:0]
+          -A INPUT -j REJECT
+          -A OUTPUT -j REJECT
+          -A FORWARD -j REJECT
+          COMMIT
+
+    - name: Create iptables rule file for debug
+      ansible.builtin.copy:
+        dest: /etc/iptables/rules.allow_all
+        mode: "0600"
+        owner: root
+        group: root
+        content: |
+          *filter
+          :INPUT ACCEPT [0:0]
+          :FORWARD ACCEPT [0:0]
+          :OUTPUT ACCEPT [0:0]
+          COMMIT
+
+    - name: Ensure LightDM config directory exists
+      ansible.builtin.file:
+        path: /etc/lightdm/lightdm.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Configure LightDM autologin
+      ansible.builtin.copy:
+        dest: /etc/lightdm/lightdm.conf.d/70-autologin.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Seat:*]
+          autologin-user={{ nonRootUser }}
+          autologin-user-timeout=0
+
+    - name: Remove unused desktop user folders
+      ansible.builtin.file:
+        path: "{{ non_root_home }}/{{ item }}"
+        state: absent
+      loop:
+        - Public
+        - Music
+        - Documents
+        - Videos
+        - Templates
+
+    - name: Check for netplan directory
+      ansible.builtin.stat:
+        path: /etc/netplan
+      register: netplan_dir
+
+    - name: Configure netplan to use NetworkManager
+      ansible.builtin.copy:
+        dest: /etc/netplan/99-network-manager.yaml
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          network:
+            version: 2
+            renderer: NetworkManager
+      notify: Apply netplan
+      when: netplan_dir.stat.isdir | default(false)
+
+    - name: Apply network renderer change before disabling networkd
+      ansible.builtin.meta: flush_handlers
+
+    - name: Collect service facts
+      ansible.builtin.service_facts:
+
+    - name: Disable CUPS if installed
+      ansible.builtin.systemd:
+        name: cups.service
+        enabled: false
         state: stopped
-        enabled: no
-    - name: Disable and mask apport.service
-      systemd:
+      when: "'cups.service' in ansible_facts.services"
+
+    - name: Disable systemd-networkd-wait-online if installed
+      ansible.builtin.systemd:
+        name: systemd-networkd-wait-online.service
+        enabled: false
+        state: stopped
+      when: "'systemd-networkd-wait-online.service' in ansible_facts.services"
+
+    - name: Disable systemd-networkd after switching to NetworkManager
+      ansible.builtin.systemd:
+        name: systemd-networkd.service
+        enabled: false
+        state: stopped
+      when:
+        - disable_systemd_networkd | bool
+        - "'NetworkManager.service' in ansible_facts.services"
+        - "'systemd-networkd.service' in ansible_facts.services"
+
+    - name: Configure XFCE screensaver and power settings for desktop user
+      ansible.builtin.command:
+        argv:
+          - dbus-run-session
+          - --
+          - xfconf-query
+          - --channel
+          - "{{ item.channel }}"
+          - --property
+          - "{{ item.property }}"
+          - --create
+          - --type
+          - "{{ item.type }}"
+          - --set
+          - "{{ item.value }}"
+      become: true
+      become_user: "{{ nonRootUser }}"
+      environment:
+        HOME: "{{ non_root_home }}"
+        XDG_CONFIG_HOME: "{{ non_root_home }}/.config"
+      loop: "{{ xfce_settings }}"
+      changed_when: false
+
+    - name: Refresh service facts after package changes
+      ansible.builtin.service_facts:
+
+    - name: Disable and mask apport.service if installed
+      ansible.builtin.systemd:
         name: apport.service
         enabled: false
         state: stopped
         masked: true
+      when: "'apport.service' in ansible_facts.services"
 
     - name: Remove ubuntu-report and popularity-contest packages
-      apt:
+      ansible.builtin.apt:
         name:
           - ubuntu-report
           - popularity-contest
         state: absent
         purge: true
-        autoremove: yes
-        update_cache: yes
+        autoremove: true
+      environment:
+        DEBIAN_FRONTEND: noninteractive
 
     - name: Ensure apport is not configured to start
-      lineinfile:
+      ansible.builtin.lineinfile:
         path: /etc/default/apport
         regexp: '^enabled='
         line: 'enabled=0'
-        create: yes
+        create: true
+        owner: root
+        group: root
+        mode: "0644"
